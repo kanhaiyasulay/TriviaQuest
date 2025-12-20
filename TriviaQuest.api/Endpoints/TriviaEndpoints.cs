@@ -53,40 +53,61 @@ public static class TriviaEndpoints
         });
 
         // 3) Score endpoint
-        group.MapPost("/quiz/score", async (ScoreRequest req, TriviaDbContext db) =>
+        app.MapPost("/api/quiz/score", async (ScoreRequest req, TriviaDbContext db) =>
         {
             if (req.Answers is null || req.Answers.Count == 0)
                 return Results.BadRequest("No answers provided.");
 
-            var qIds = req.Answers
-                .Select(a => a.QuestionId)
-                .Distinct()
-                .ToList();
+            var qIds = req.Answers.Select(a => a.QuestionId).Distinct().ToList();
 
             var choices = await db.Choices
                 .Where(c => qIds.Contains(c.QuestionId))
-                .Select(c => new { c.Id, c.QuestionId, c.IsCorrect })
+                .Select(c => new
+                {
+                    c.Id,
+                    c.QuestionId,
+                    c.Text,
+                    c.IsCorrect
+                })
                 .ToListAsync();
 
-            var correct = 0;
+            var results = new List<object>();
+            var correctCount = 0;
 
             foreach (var a in req.Answers)
             {
-                var match = choices.FirstOrDefault(c =>
+                var selected = choices.FirstOrDefault(c =>
                     c.QuestionId == a.QuestionId &&
                     c.Id == a.ChoiceId);
 
-                if (match is not null && match.IsCorrect)
-                    correct++;
+                var correctChoice = choices.FirstOrDefault(c =>
+                    c.QuestionId == a.QuestionId &&
+                    c.IsCorrect);
+
+                var isCorrect = selected != null && selected.IsCorrect;
+
+                if (isCorrect)
+                    correctCount++;
+
+                results.Add(new
+                {
+                    questionId = a.QuestionId,
+                    selectedChoiceId = a.ChoiceId,
+                    isCorrect,
+                    correctChoiceId = isCorrect ? null : correctChoice?.Id,
+                    correctChoiceText = isCorrect ? null : correctChoice?.Text
+                });
             }
 
             return Results.Ok(new
             {
                 total = req.Answers.Count,
-                correct,
-                percent = (int)Math.Round(100.0 * correct / req.Answers.Count)
+                correct = correctCount,
+                percent = (int)Math.Round(100.0 * correctCount / req.Answers.Count),
+                results
             });
         });
+
 
         return group;
     }
