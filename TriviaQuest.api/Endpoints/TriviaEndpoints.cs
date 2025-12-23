@@ -53,59 +53,69 @@ public static class TriviaEndpoints
         });
 
         // 3) Score endpoint
-        app.MapPost("/api/quiz/score", async (ScoreRequest req, TriviaDbContext db) =>
+        group.MapPost("/quiz/score", async (ScoreRequest req, TriviaDbContext db) =>
         {
             if (req.Answers is null || req.Answers.Count == 0)
                 return Results.BadRequest("No answers provided.");
 
             var qIds = req.Answers.Select(a => a.QuestionId).Distinct().ToList();
 
-            var choices = await db.Choices
-                .Where(c => qIds.Contains(c.QuestionId))
-                .Select(c => new
+        var questions = await db.Questions
+            .Where(q => qIds.Contains(q.Id))
+            .Select(q => new
+            {
+                q.Id,
+                q.Explanation,
+                Choices = q.Choices.Select(c => new
                 {
                     c.Id,
-                    c.QuestionId,
                     c.Text,
                     c.IsCorrect
                 })
-                .ToListAsync();
+            })
+            .ToListAsync();
 
-            var results = new List<object>();
-            var correctCount = 0;
 
-            foreach (var a in req.Answers)
+        var results = new List<QuizResultDto>();
+
+        var correctCount = 0;
+
+        foreach (var a in req.Answers)
+        {
+            var question = questions.First(q => q.Id == a.QuestionId);
+
+            var selectedChoice = question.Choices
+                .FirstOrDefault(c => c.Id == a.ChoiceId);
+
+            var correctChoice = question.Choices
+                .First(c => c.IsCorrect);
+
+            var isCorrect = selectedChoice != null && selectedChoice.IsCorrect;
+
+            if (isCorrect)
+                correctCount++;
+
+            results.Add(new QuizResultDto
             {
-                var selected = choices.FirstOrDefault(c =>
-                    c.QuestionId == a.QuestionId &&
-                    c.Id == a.ChoiceId);
-
-                var correctChoice = choices.FirstOrDefault(c =>
-                    c.QuestionId == a.QuestionId &&
-                    c.IsCorrect);
-
-                var isCorrect = selected != null && selected.IsCorrect;
-
-                if (isCorrect)
-                    correctCount++;
-
-                results.Add(new
-                {
-                    questionId = a.QuestionId,
-                    selectedChoiceId = a.ChoiceId,
-                    isCorrect,
-                    correctChoiceId = isCorrect ? null : correctChoice?.Id,
-                    correctChoiceText = isCorrect ? null : correctChoice?.Text
-                });
-            }
-
-            return Results.Ok(new
-            {
-                total = req.Answers.Count,
-                correct = correctCount,
-                percent = (int)Math.Round(100.0 * correctCount / req.Answers.Count),
-                results
+                QuestionId = question.Id,
+                SelectedChoiceId = a.ChoiceId,
+                IsCorrect = isCorrect,
+                CorrectChoiceId = isCorrect ? null : correctChoice.Id,
+                CorrectChoiceText = isCorrect ? null : correctChoice.Text,
+                Explanation = isCorrect ? null : question.Explanation
             });
+        }
+
+        var response = new QuizScoreResponseDto
+        {
+            Total = req.Answers.Count,
+            Correct = correctCount,
+            Percent = (int)Math.Round(100.0 * correctCount / req.Answers.Count),
+            Results = results
+        };
+
+        return Results.Ok(response);
+
         });
 
 

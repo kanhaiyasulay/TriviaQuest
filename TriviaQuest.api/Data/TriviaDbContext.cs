@@ -23,9 +23,9 @@ public class TriviaDbContext : DbContext
         );
 
         b.Entity<Question>().HasData(
-            new Question { Id = 1, Text = "What is the capital of France?", CategoryId = 1 },
-            new Question { Id = 2, Text = "Who directed 'Inception'?", CategoryId = 2 },
-            new Question { Id = 3, Text = "Which company makes the PlayStation?", CategoryId = 3 }
+            new Question { Id = 1, Text = "What is the capital of France?", Explanation = "Paris is capital of France", CategoryId = 1 },
+            new Question { Id = 2, Text = "Who directed 'Inception'?", Explanation = "Christopher Nolan was director", CategoryId = 2 },
+            new Question { Id = 3, Text = "Which company makes the PlayStation?", Explanation = "Sony makes since 1994", CategoryId = 3 }
         );
 
         b.Entity<Choice>().HasData(
