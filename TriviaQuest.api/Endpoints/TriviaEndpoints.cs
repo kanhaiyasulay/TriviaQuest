@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TriviaQuest.api.Data;
 using TriviaQuest.api.Dtos;
+using TriviaQuest.api.Models;
 
 namespace TriviaQuest.api.Endpoints;
 
@@ -10,7 +11,7 @@ public static class TriviaEndpoints
         this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api");
-        // 1) Categories
+        // 1) Get Categories
         group.MapGet("/categories", async (TriviaDbContext db) =>
         {
             var cats = await db.Categories
@@ -21,9 +22,10 @@ public static class TriviaEndpoints
             return Results.Ok(cats);
         });
 
-        // 2) Random questions
+        // 2) Get Random questions
         group.MapGet("/questions", async (
             int? categoryId,
+            Difficulty? difficulty,
             int? limit,
             TriviaDbContext db) =>
         {
@@ -31,6 +33,9 @@ public static class TriviaEndpoints
 
             if (categoryId is not null)
                 q = q.Where(x => x.CategoryId == categoryId);
+
+            if (difficulty.HasValue)
+                q = q.Where(it => it.Difficulty == difficulty);
 
             q = q.OrderBy(x => EF.Functions.Random());
 
@@ -42,6 +47,7 @@ public static class TriviaEndpoints
                 {
                     x.Id,
                     x.Text,
+                    x.Difficulty,
                     x.CategoryId,
                     Choices = x.Choices
                         .OrderBy(_ => EF.Functions.Random())
@@ -60,61 +66,61 @@ public static class TriviaEndpoints
 
             var qIds = req.Answers.Select(a => a.QuestionId).Distinct().ToList();
 
-        var questions = await db.Questions
-            .Where(q => qIds.Contains(q.Id))
-            .Select(q => new
-            {
-                q.Id,
-                q.Explanation,
-                Choices = q.Choices.Select(c => new
+            var questions = await db.Questions
+                .Where(q => qIds.Contains(q.Id))
+                .Select(q => new
                 {
-                    c.Id,
-                    c.Text,
-                    c.IsCorrect
+                    q.Id,
+                    q.Explanation,
+                    Choices = q.Choices.Select(c => new
+                    {
+                        c.Id,
+                        c.Text,
+                        c.IsCorrect
+                    })
                 })
-            })
-            .ToListAsync();
+                .ToListAsync();
 
 
-        var results = new List<QuizResultDto>();
+            var results = new List<QuizResultDto>();
 
-        var correctCount = 0;
+            var correctCount = 0;
 
-        foreach (var a in req.Answers)
-        {
-            var question = questions.First(q => q.Id == a.QuestionId);
-
-            var selectedChoice = question.Choices
-                .FirstOrDefault(c => c.Id == a.ChoiceId);
-
-            var correctChoice = question.Choices
-                .First(c => c.IsCorrect);
-
-            var isCorrect = selectedChoice != null && selectedChoice.IsCorrect;
-
-            if (isCorrect)
-                correctCount++;
-
-            results.Add(new QuizResultDto
+            foreach (var a in req.Answers)
             {
-                QuestionId = question.Id,
-                SelectedChoiceId = a.ChoiceId,
-                IsCorrect = isCorrect,
-                CorrectChoiceId = isCorrect ? null : correctChoice.Id,
-                CorrectChoiceText = isCorrect ? null : correctChoice.Text,
-                Explanation = isCorrect ? null : question.Explanation
-            });
-        }
+                var question = questions.First(q => q.Id == a.QuestionId);
 
-        var response = new QuizScoreResponseDto
-        {
-            Total = req.Answers.Count,
-            Correct = correctCount,
-            Percent = (int)Math.Round(100.0 * correctCount / req.Answers.Count),
-            Results = results
-        };
+                var selectedChoice = question.Choices
+                    .FirstOrDefault(c => c.Id == a.ChoiceId);
 
-        return Results.Ok(response);
+                var correctChoice = question.Choices
+                    .First(c => c.IsCorrect);
+
+                var isCorrect = selectedChoice != null && selectedChoice.IsCorrect;
+
+                if (isCorrect)
+                    correctCount++;
+
+                results.Add(new QuizResultDto
+                {
+                    QuestionId = question.Id,
+                    SelectedChoiceId = a.ChoiceId,
+                    IsCorrect = isCorrect,
+                    CorrectChoiceId = isCorrect ? null : correctChoice.Id,
+                    CorrectChoiceText = isCorrect ? null : correctChoice.Text,
+                    Explanation = isCorrect ? null : question.Explanation
+                });
+            }
+
+            var response = new QuizScoreResponseDto
+            {
+                Total = req.Answers.Count,
+                Correct = correctCount,
+                Percent = (int)Math.Round(100.0 * correctCount / req.Answers.Count),
+                Results = results
+            };
+
+            return Results.Ok(response);
 
         });
 
